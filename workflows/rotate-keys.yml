@@ -1,0 +1,66 @@
+name: Rotate daily keys
+
+on:
+  schedule:
+    - cron: '0 0 * * *'   # каждый день в 00:00 UTC
+  workflow_dispatch:       # кнопка "Run workflow" в GitHub
+  repository_dispatch:     # вызов извне (для кнопки на сайте)
+    types: [rotate-keys]
+
+jobs:
+  rotate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete all old keys
+        env:
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          KV_NAMESPACE_ID: ${{ secrets.KV_NAMESPACE_ID }}
+        run: |
+          KEYS=$(curl -s "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/storage/kv/namespaces/$KV_NAMESPACE_ID/keys" \
+            -H "Authorization: Bearer $CF_API_TOKEN" \
+            | jq -r '.result[].name')
+
+          if [ -n "$KEYS" ]; then
+            echo "$KEYS" | jq -R . | jq -s . > /tmp/keys.json
+            curl -s -X DELETE "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/storage/kv/namespaces/$KV_NAMESPACE_ID/bulk" \
+              -H "Authorization: Bearer $CF_API_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d @/tmp/keys.json
+          fi
+
+      - name: Generate new keys
+        env:
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          KV_NAMESPACE_ID: ${{ secrets.KV_NAMESPACE_ID }}
+          CATBOX_URLS: |
+            https://files.catbox.moe/qbv53r.rar
+            https://files.catbox.moe/qya48m.rar
+            https://files.catbox.moe/a27f7f.rar
+            https://files.catbox.moe/80fqew.rar
+            https://files.catbox.moe/n0vsnz.rar
+            https://files.catbox.moe/t4thqs.rar
+            https://files.catbox.moe/pmkh22.rar
+            https://files.catbox.moe/qfuibw.rar
+            https://files.catbox.moe/8qkhkg.rar
+            https://files.catbox.moe/nhu0qz.rar
+            https://files.catbox.moe/oh4zyd.rar
+            https://files.catbox.moe/a3dtki.rar
+            https://files.catbox.moe/u7jgra.rar
+            https://files.catbox.moe/q29ffw.rar
+
+            # ... вставь все 14 ссылок
+        run: |
+          IFS=$'\n' read -r -d '' -a URLS <<< "$CATBOX_URLS" || true
+
+          for URL in "${URLS[@]}"; do
+            for i in {1..10}; do
+              KEY=$(openssl rand -base64 6 | tr -dc 'a-zA-Z0-9' | head -c 4)
+
+              curl -s -X PUT "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/storage/kv/namespaces/$KV_NAMESPACE_ID/values/$KEY" \
+                -H "Authorization: Bearer $CF_API_TOKEN" \
+                -H "Content-Type: application/json" \
+                --data "{\"file\":\"$URL\",\"status\":\"active\"}"
+            done
+          done
